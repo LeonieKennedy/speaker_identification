@@ -1,0 +1,7 @@
+uvicorn
+pydub
+pyannote.audio
+fastapi
+fastapi_offline
+pathlib
+numpy
