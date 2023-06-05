@@ -11,7 +11,7 @@ from tempfile import NamedTemporaryFile
 # Scripts
 import save_encodings
 from split_speakers import SplitSpeakers
-from identify_speaker import IdentifSpeaker
+from identify_speaker import IdentifySpeaker
 
 # Set up API
 app = FastAPIOffline(
@@ -31,7 +31,7 @@ PERSIST_ENCODING_MULTIPLE = 1000
 count = 0
 
 diarise_model = SplitSpeakers()
-identify_model = IdentifSpeaker()
+identify_model = IdentifySpeaker()
 
 # Load saved encodings
 try:
@@ -46,10 +46,15 @@ async def upload_audio_file(audio_file: UploadFile):
 
     return
 
+
 @app.post("/detect_speakers", tags=["Detect if speaker is present in audio"])
 async def detect(audio_file: UploadFile):
+    global diarise_model
 
-    return
+    tmp_path = save_upload_file_tmp(audio_file)
+
+    return SplitSpeakers.detect_speakers(diarise_model, tmp_path)
+
 
 @app.post("/persist", tags=["Persist speaker data"])
 async def persist():
