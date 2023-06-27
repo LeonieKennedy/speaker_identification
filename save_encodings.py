@@ -1,6 +1,7 @@
 import pickle
 
 
+# Add speaker to list of speakers(dictionary)
 def add_speaker(name, new_encoding, details, saved_encodings):
     speaker = {
         "name": name,
@@ -15,5 +16,6 @@ def add_speaker(name, new_encoding, details, saved_encodings):
     return saved_encodings
 
 
-def persist(encodings):
-    pickle.dump(encodings, open("saved_speakeres.pt", "wb"))
+# Save all speakers to disk
+def persist(encodings, filename):
+    pickle.dump(encodings, open(filename, "wb"))
