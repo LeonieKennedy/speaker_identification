@@ -15,8 +15,8 @@ class SplitSpeakers:
         self.pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization@2.1", use_auth_token=pipeline_inference_token)
         print("model, pipeline and inference created")
 
+
     def split_and_save_audio(self, audio_file, count):
-        # identify_speaker = IdentifySpeaker()
         audio = AudioSegment.from_wav(audio_file)
 
         diarisation = self.pipeline(audio_file)
@@ -33,7 +33,6 @@ class SplitSpeakers:
                 os.makedirs("./audio_files/" + speaker + "_" + str(count))
                 audio_segment.export("./audio_files/"+speaker + "_" + str(count) + "/" + speaker + "_"+str(time.start)[3:] + ".wav", format="wav")
                 new_speaker_dict.append(speaker)
-            # embedding = identify_speaker.create_embedding(audio_segment)
 
         return count, (f"{len(np.unique(new_speaker_dict))} speakers found. {len(diarisation)} files saved in ./audio_files/")
 
