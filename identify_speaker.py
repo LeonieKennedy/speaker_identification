@@ -16,14 +16,10 @@ class IdentifySpeaker:
         try:
             # Create mel spectrogram - pre-processes audio file to normalise volume, remove silence etc
             wav_tensor, sample_rate = torchaudio.load(path)
-            print(wav_tensor)
-            print("load")
             mel_tensor = self.wav2mel(wav_tensor, sample_rate)  # shape: (frames, mel_dim)
-            print("mel")
-            # Create the embedding
 
+            # Create the embedding
             emb = self.dvector.embed_utterance(mel_tensor)  # shape: (emb_dim)
-            print("dvector")
             embedding = emb.detach().numpy()
 
         # Occasionally you get a RuntimeError when audio file is too short (<1s)
@@ -31,13 +27,16 @@ class IdentifySpeaker:
             print(f"Path {path} too short. RuntimeError")
             traceback.print_exc()
             return "RuntimeError"
+
         print("embedding created")
 
         return embedding
 
     # Identify speaker
-    def identify_speaker(self, embedding, collection, n_results):
+    def identify_speaker(self, embedding, collection, multiple_speakers, n_results):
         embedding = embedding.reshape(1, -1).tolist()
+
+        print("identify count:", collection.count())
 
         output = collection.query(
             query_embeddings=embedding,
@@ -54,8 +53,10 @@ class IdentifySpeaker:
                 "distance": output["distances"][0][i]
             })
 
-        # collection.add(embeddings=embedding,
-        #                metadatas=[{"speaker_id": str(collection.count() + 1), "name": "Unknown", "details": ""}],
-        #                ids=str(collection.count() + 1))
+        print(multiple_speakers)
+        if multiple_speakers is False:
+            collection.add(embeddings=embedding,
+                           metadatas=[{"speaker_id": str(collection.count() + 1), "name": ("Unknown" + str(collection.count() + 1)), "details": ""}],
+                           ids=str(collection.count() + 1))
 
         return results

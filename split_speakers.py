@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from pyannote.audio import Pipeline
 from pydub import AudioSegment
 import os
@@ -8,11 +9,13 @@ import os
 class SplitSpeakers:
     def __init__(self):
         print("creating models")
+
+        # If you wanted to run it online
         voice_token = "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"
         pipeline_token = "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"
 
-        self.voice = Pipeline.from_pretrained("pyannote/voice-activity-detection", use_auth_token=voice_token)
-        self.pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization@2.1", use_auth_token=pipeline_token)
+        self.voice = Pipeline.from_pretrained("./models/voice_config.yaml")
+        self.pipeline = Pipeline.from_pretrained("./models/diarisation_config.yaml")
         print("model, pipeline and inference created")
 
     def split_and_save_audio(self, audio_file, count):

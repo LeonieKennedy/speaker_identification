@@ -39,21 +39,27 @@ client = chromadb.Client(Settings(
     chroma_db_impl="duckdb+parquet",
     persist_directory="chroma",
 ))
-collection = client.get_collection(name="speaker_collection_l2")
+try:
+    collection = client.get_collection(name="speaker_collection_ip")
+    print("Count:", collection.count())
+    print("loaded collection")
+except ValueError:
+    print("collection does not exist, creating a new one")
+    client.create_collection(name="speaker_collection_l2")
 
 # Models
 diarise_model = SplitSpeakers()
 
 
 # Identify speakers and persist if PERSIST_ENCODING_MULTIPLE is reached
-def identify_speaker(file_path, model, n_speakers=N_SPEAKERS):
+def identify_speaker(file_path, model, multiple_speakers, n_speakers=N_SPEAKERS):
     global count, collection, client
 
     embedding = model.create_embedding(file_path)
     if embedding == "RuntimeError":
         return embedding
 
-    identified_speakers = model.identify_speaker(embedding, collection, n_speakers)
+    identified_speakers = model.identify_speaker(embedding, collection, multiple_speakers, n_speakers)
     identified_speakers.append(("saved_id " + str(collection.count())))
 
     count += 1
@@ -68,7 +74,7 @@ def identify_speaker(file_path, model, n_speakers=N_SPEAKERS):
 
 # Upload audio with multiple speakers
 @app.post("/upload_audio")
-async def upload_audio_file(audio_file: UploadFile, save_and_identify: bool = False):
+async def upload_audio_file(audio_file: UploadFile, identify_speakers: bool = False):
     global diarise_model, count, collection
 
     tmp_path = save_upload_file_tmp(audio_file)
@@ -77,12 +83,14 @@ async def upload_audio_file(audio_file: UploadFile, save_and_identify: bool = Fa
     count, result = diarise_model.split_and_save_audio(tmp_path, count)
 
     # Save and identify speakers in audio files
-    if save_and_identify is True:
+    if identify_speakers is True:
         identify_model = IdentifySpeaker()
 
         list_of_speakers = {}
         distances = {}
         all_results = {}
+
+        unknown_count = 0
 
         # For each individual speaker
         for directory in os.listdir("audio_files"):
@@ -95,8 +103,8 @@ async def upload_audio_file(audio_file: UploadFile, save_and_identify: bool = Fa
                 file_path = os.path.join("audio_files", directory, file)
                 try:
                     # identify_speakers(audio_file_path, model, top_n_speakers_identified)
-                    identified_speakers = identify_speaker(file_path, identify_model, 1)
-
+                    identified_speakers = identify_speaker(file_path, identify_model, True,1)
+                    print("identified speakers", identified_speakers)
                 except:
                     print("file:", file)
                     traceback.print_exc()
@@ -120,11 +128,20 @@ async def upload_audio_file(audio_file: UploadFile, save_and_identify: bool = Fa
                         pass
 
             # Output the most common identified speaker per directory
-            all_results[directory]["speaker_id"] = max(list_of_speakers[directory], key=list_of_speakers[directory].get)
-            all_results[directory]["speaker_name"] = collection.get(where={"speaker_id": all_results[directory]["speaker_id"]})["metadatas"][0]["name"]
+            try:
+                all_results[directory]["speaker_id"] = max(list_of_speakers[directory], key=list_of_speakers[directory].get)
+                all_results[directory]["speaker_name"] = collection.get(where={"speaker_id": all_results[directory]["speaker_id"]})["metadatas"][0]["name"]
+                # Calculate average distance of identified speaker
+                all_results[directory]["distance"] = distances[directory][all_results[directory]["speaker_id"]] / max(list_of_speakers[directory].values())
 
-            # Calculate average distance of identified speaker
-            all_results[directory]["distance"] = distances[directory][all_results[directory]["speaker_id"]] / max(list_of_speakers[directory].values())
+            except ValueError:
+                print("no saved speakers found")
+                all_results[directory]["speaker_id"] = str(collection.count() + unknown_count)
+                all_results[directory]["speaker_name"] = "Unknown" + str(unknown_count)
+                all_results[directory]["distance"] = None
+
+            if all_results[directory]["speaker_name"] == "Unknown" + str(unknown_count):
+                unknown_count += 1
 
         return all_results
 
@@ -140,7 +157,7 @@ async def identify_single_speaker(audio_file: UploadFile):
 
     identify_model = IdentifySpeaker()
 
-    identified_speakers = identify_speaker(tmp_path, identify_model, N_SPEAKERS)
+    identified_speakers = identify_speaker(tmp_path, identify_model, False, N_SPEAKERS)
 
     return identified_speakers
 
@@ -150,10 +167,11 @@ async def identify_single_speaker(audio_file: UploadFile):
 async def change_speaker_id(old_id: int, new_id: int):
     global collection
 
-    output = collection.get(where={"speaker_id": str(old_id)})
-    collection.update(ids=output["ids"], embeddings=output["embeddings"], metadatas=[{"speaker_id": new_id, "name": output["metadatas"][i]["name"], "details": output["metadatas"][i]["details"]} for i in range(0, len(output["ids"]))])
+    old_output = collection.get(where={"speaker_id": str(old_id)})
+    new_output = collection.get(where={"speaker_id": str(new_id)})
+    collection.update(ids=old_output["ids"], embeddings=old_output["embeddings"], metadatas=[{"speaker_id": new_id, "name": new_output["metadatas"][0]["name"], "details": new_output["metadatas"][0]["details"]} for i in range(0, len(old_output["ids"]))])
 
-    return f"{len(output['ids'])} audio files updated"
+    return f"{len(old_output['ids'])} audio files updated"
 
 
 # Change saved speaker details e.g. name
@@ -206,6 +224,16 @@ def detect(audio_file: UploadFile):
 
     return diarise_model.detect_speakers(tmp_path)
 
+
+# Delete speakers or audio embeddings
+@app.post("delete_speakers", description="Delete speakers from collection")
+def delete_speakers(field: str, value: str):
+    if field == "audio_id":
+        collection.delete(ids=[value])
+    else:
+        collection.delete(where={field: value})
+
+    return f"{field} with the value of {value} deleted"
 
 # Save speakers to disk
 @app.get("/persist", description="Persist speaker data")
